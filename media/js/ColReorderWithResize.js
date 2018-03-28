@@ -1,6 +1,6 @@
 /*
-* File:        ColReorderWithResize-1.1.0-dev2.js
-* Version:     1.1.0-dev2 (based on commit 2a6de4e884 done on Feb 22, 2013)
+* File:        ColReorderWithResize-1.1.1.js
+* Version:     1.1.1 (based on commit 2a6de4e884 done on Feb 22, 2013)
 * CVS:         $Id$
 * Description: Allow columns to be reordered in a DataTable
 * Author:      Allan Jardine (www.sprymedia.co.uk)
@@ -102,6 +102,7 @@
     */
     $.fn.dataTableExt.oApi.fnColReorder = function (oSettings, iFrom, iTo) {
         var i, iLen, j, jLen, iCols = oSettings.aoColumns.length, nTrs, oCol;
+        var v110 = $.fn.dataTable.Api ? true : false;
 
         /* Sanity check in the input */
         if (iFrom == iTo) {
@@ -146,23 +147,50 @@
         }
 
         /* Data column sorting (the column which the sort for a given column should take place on) */
-        for (i = 0, iLen = iCols; i < iLen; i++) {
-            oCol = oSettings.aoColumns[i];
-            for (j = 0, jLen = oCol.aDataSort.length; j < jLen; j++) {
-                oCol.aDataSort[j] = aiInvertMapping[oCol.aDataSort[j]];
-            }
+        for ( i=0, iLen=iCols ; i<iLen ; i++ )
+        {
+          oCol = oSettings.aoColumns[i];
+          for ( j=0, jLen=oCol.aDataSort.length ; j<jLen ; j++ )
+          {
+            oCol.aDataSort[j] = aiInvertMapping[ oCol.aDataSort[j] ];
+          }
+      
+          // Update the column indexes
+          if ( v110 ) {
+            oCol.idx = aiInvertMapping[ oCol.idx ];
+          }
+        }
+      
+        if ( v110 ) {
+          // Update 1.10 optimised sort class removal variable
+          $.each( oSettings.aLastSort, function (i, val) {
+            oSettings.aLastSort[i].src = aiInvertMapping[ val.src ];
+          } );
+        }
+      
+        /* Update the Get and Set functions for each column */
+        for ( i=0, iLen=iCols ; i<iLen ; i++ )
+        {
+          oCol = oSettings.aoColumns[i];
+          if ( typeof oCol.mData == 'number' ) {
+            oCol.mData = aiInvertMapping[ oCol.mData ];
+      
+            // regenerate the get / set functions
+            oSettings.oApi._fnColumnOptions( oSettings, i, {} );
+          }
         }
 
 
-        /*
-        * Move the DOM elements
-        */
-        if (oSettings.aoColumns[iFrom].bVisible) {
+          /*
+           * Move the DOM elements
+           */
+          if ( oSettings.aoColumns[iFrom].bVisible )
+          {
             /* Calculate the current visible index and the point to insert the node before. The insert
-            * before needs to take into account that there might not be an element to insert before,
-            * in which case it will be null, and an appendChild should be used
-            */
-            var iVisibleIndex = this.oApi._fnColumnIndexToVisible(oSettings, iFrom);
+             * before needs to take into account that there might not be an element to insert before,
+             * in which case it will be null, and an appendChild should be used
+             */
+            var iVisibleIndex = this.oApi._fnColumnIndexToVisible( oSettings, iFrom );
             var iInsertBeforeIndex = null;
 
             i = iTo < iFrom ? iTo : iTo + 1;
@@ -204,8 +232,30 @@
         fnArraySwitch(oSettings.aoPreSearchCols, iFrom, iTo);
 
         /* Array array - internal data anodes cache */
-        for (i = 0, iLen = oSettings.aoData.length; i < iLen; i++) {
-            fnArraySwitch(oSettings.aoData[i]._anHidden, iFrom, iTo);
+        for ( i=0, iLen=oSettings.aoData.length ; i<iLen ; i++ )
+        {
+          var data = oSettings.aoData[i];
+      
+          if ( v110 ) {
+            // DataTables 1.10+
+            if ( data.anCells ) {
+              fnArraySwitch( data.anCells, iFrom, iTo );
+            }
+      
+            // For DOM sourced data, the invalidate will reread the cell into
+            // the data array, but for data sources as an array, they need to
+            // be flipped
+            if ( data.src !== 'dom' && $.isArray( data._aData ) ) {
+              fnArraySwitch( data._aData, iFrom, iTo );
+            }
+          }
+          else {
+            // DataTables 1.9-
+            if ( $.isArray( data._aData ) ) {
+              fnArraySwitch( data._aData, iFrom, iTo );
+            }
+            fnArraySwitch( data._anHidden, iFrom, iTo );
+          }
         }
 
         /* Reposition the header elements in the header layout array */
@@ -219,6 +269,11 @@
             }
         }
 
+        // In 1.10 we need to invalidate row cached data for sorting, filtering etc
+        if ( v110 ) {
+          var api = new $.fn.dataTable.Api( oSettings );
+          api.rows().invalidate();
+        }
 
         /*
         * Update DataTables' event handlers
@@ -232,16 +287,12 @@
 
 
         /* Fire an event so other plug-ins can update */
-        $(oSettings.oInstance).trigger('column-reorder', [oSettings, {
-            "iFrom": iFrom,
-            "iTo": iTo,
-            "aiInvertMapping": aiInvertMapping
-        }]);
-
-        if (typeof oSettings.oInstance._oPluginFixedHeader != 'undefined') {
-            oSettings.oInstance._oPluginFixedHeader.fnUpdate();
-        }
-    };
+        $(oSettings.oInstance).trigger( 'column-reorder', [ oSettings, {
+          "iFrom": iFrom,
+          "iTo": iTo,
+          "aiInvertMapping": aiInvertMapping
+        } ] );
+      };
 
 
 
@@ -254,14 +305,14 @@
     * @param {object} opts ColReorder options
     */
     var ColReorder = function (dt, opts) {
-                $(dt.nTableWrapper).width($(dt.nTable).width());
+                //$(dt.nTableWrapper).width($(dt.nTable).width());
                 // make sure the headers are the same width as the rest of table
-                dt.aoDrawCallback.push({
-                    "fn": function ( oSettings ) {
-                        $(oSettings.nTableWrapper).width($(oSettings.nTable).width());
-                    },
-                    "sName": "Resize headers"
-                });
+                //dt.aoDrawCallback.push({
+                //    "fn": function ( oSettings ) {
+                //        $(oSettings.nTableWrapper).width($(oSettings.nTable).outerWidth());
+                //    },
+                //    "sName": "Resize headers"
+                //});
         var oDTSettings;
         // Set the table to minimum size so that it doesn't stretch too far
         $(dt.nTable).width("10px");
@@ -454,7 +505,15 @@
             * @type     bolean
             * @default  true
             */
-            "bAddFixed": true
+            "bAddFixed": true,
+            
+            /**
+             * When set to true, can't minimize the column's width when all column's width  equals table's width.
+             * @property bTableFullFilled
+             * @type     bolean
+             * @default  false
+             */
+            "bTableFullFilled": false,
         };
 
 
@@ -611,20 +670,14 @@
 
             var tp,i;
             var availableFields = this.s.dt.aoColumns;
-            var html ='<div class="selcol1">';
-            var d2 = (availableFields.length-1) /2;
+            var html ='';
             for (i=0;i<availableFields.length;i++) {
-                tp = "col"+(i%2);
-                if (i > d2) {
-                    html += '</div><div class="selcol2">';
-                    d2 = 99999999;
-                }
-                var selected = availableFields[i].bVisible;
+              var selected = availableFields[i].bVisible;
                 var title = availableFields[i].sTitle;
                 var mData = availableFields[i].mData;
-                html += '<label class="'+tp+'">'+
-                        '<input name="columns" type="checkbox" checked="'+(selected ? "checked" : "")+'" value="'+mData+'">'+
-                        title + '</label>';
+                html += '<li ' + (selected ? 'class="selected"' : ' ') + '><a style="line-height:20px;padding-right:6px;padding-left:6px;"><div class="checkbox" style="margin:0"><label>' +
+                        '<input name="columns" type="checkbox" ' + (selected ? 'checked=""' : '') + ' value="' + mData + '">' + '&nbsp;&nbsp'+
+                        title + '</label></div></a><li>';
             }
             html  += "</div>";
 
@@ -700,6 +753,10 @@
 
             if (typeof this.s.init.bAddFixed != 'undefined') {
                 this.s.bAddFixed = this.s.init.bAddFixed;
+            }
+            
+            if (typeof this.s.init.bTableFullFilled != 'undefined') {
+              this.s.bTableFullFilled = this.s.init.bTableFullFilled;
             }
 
             if (typeof this.s.init.fnResizeTableCallback == 'function') {
@@ -795,7 +852,13 @@
                 $("input",myelm).off("change").on("change", function(e) {
                     var index = $('input',myelm).index($(this));
                     var checked = $(this).is(":checked");
-                    settings.oInstance.fnSetColumnVis(index,checked,true);
+                    if($(".form-group input:checked").length>0){
+                      settings.oInstance.fnSetColumnVis(index,checked);
+                      settings.oInstance.trigger("setVis.ColReorder");
+                    }
+                    else{
+                      $(this).prop('checked', true);
+                    }
                 });
                 
             if (jQuery.ui) {
@@ -811,7 +874,7 @@
             }
             else {
                 var overlay = $('<div class="overlayDiv"></div>').appendTo("body").css({"position":"fixed",top:0,left:0, width:"100%",height:"100%","z-index":5000});
-                myelm.appendTo("body").css({position:"absolute", top:e.clientY-2, "background-color":"grey", left:e.clientX-2, "z-index":5005, "border":"1px solid black"});
+                myelm.appendTo("body").css({position:"absolute", top:e.clientY-2, "background-color":"#393943", left:e.clientX-2, "z-index":5005, "border":"1px solid black"});
                 var timer = 0;
                 myelm.mouseover(function(e) {
                     if (timer) {
@@ -1131,7 +1194,7 @@
                 that._fnMouseMove.call(that, e, i);
             }).on('mouseup.ColReorder', function (e) {
                 setTimeout(function () {
-                    that._fnMouseUp.call(that, e, i);
+                    that._fnMouseUp.call(that, e, nTh, i);
                 }, 10);
             });
         },
@@ -1170,6 +1233,16 @@
                     newWidth = this.s.minResizeWidth;
                     moveLength = newWidth - this.s.mouse.startWidth ;
                 }
+
+                var tableParent = this.s.dt.nTableWrapper.parentElement;
+                if(this.s.bTableFullFilled){
+                  if ($(this.s.dt.nTable).innerWidth() <= $(tableParent).innerWidth()) {
+                    if (moveLength <= 0) {
+                      return;
+                    }
+                  }
+                }
+
                 if (moveLength !== 0 && !scrollXEnabled) {
                     $(nThNext).width(this.s.mouse.nextStartWidth - moveLength);
                 }
@@ -1218,7 +1291,7 @@
 
                 if (this.s.bResizeTable) {
                     var tableMove = this.s.tableWidth + moveLength;
-                    $(nTh).closest('table').width(tableMove);
+                    //$(nTh).closest('table').width(tableMove);
                     this.s.fnResizeTableCallback($(nTh).closest('table'),tableMove,moveLength);
                 }
 
@@ -1283,7 +1356,7 @@
         *  @returns void
         *  @private
         */
-        "_fnMouseUp": function (e, colResized) {
+        "_fnMouseUp": function (e, nTh, colResized) {
             var that = this;
 
             $(document).off('mousemove.ColReorder mouseup.ColReorder');
@@ -1309,6 +1382,7 @@
 
                 /* Save the state */
                 this.s.dt.oInstance.oApi._fnSaveState(this.s.dt);
+                this.s.dt.oInstance.trigger("reorder.ColReorder");
             }
             else if (this.dom.resize !== null) {
                 var i;
@@ -1327,7 +1401,16 @@
 */
                 for (i = 0; i < this.s.dt.aoColumns.length; i++) {
                     if (this.s.dt.aoColumns[i]._ColReorder_iOrigCol === colResized) {
-                        aoColumnsColumnindex = i;
+                      
+                        //if mouse clicked the right'th',choose the left 'th', because we actually adjust the left one.
+                        if (this.dom.resizeCol == "left") {
+                          var nThPrev = $(nTh).prev();
+                          aoColumnsColumnindex = $.inArray(nThPrev[0], $.map(this.s.dt.aoColumns, function (o) { return o.nTh; }));
+                        }
+                        else{
+                          aoColumnsColumnindex = i;
+                        }
+                        
                         break;
                     }
                 }
@@ -1373,10 +1456,11 @@
                     }
                 }
 
-                $(this.s.dt.nTableWrapper).width($(this.s.dt.nTable).width());
+              //$(this.s.dt.nTableWrapper).width($(this.s.dt.nTable).outerWidth());
 
                 //Save the state
                 this.s.dt.oInstance.oApi._fnSaveState(this.s.dt);
+                this.s.dt.oInstance.trigger("resize.ColReorder");
             }
             ///////////////////////////////////////////////////////
 
@@ -1756,5 +1840,3 @@
 
 
 })(jQuery, window, document);
-
-
